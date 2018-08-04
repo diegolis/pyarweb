@@ -3,12 +3,14 @@ from django import forms
 from django.conf import settings
 from django.utils.translation import ugettext_lazy as _
 from django.core.urlresolvers import reverse
-from .models import Job, JobInactivated
+from django_summernote.widgets import SummernoteInplaceWidget
+
 from crispy_forms.layout import Submit, Reset, Layout
 from crispy_forms.helper import FormHelper
-from django_summernote.widgets import SummernoteInplaceWidget
 from sanitizer.forms import SanitizedCharField
 
+from .models import Job, JobInactivated
+from model_utils import Choices
 from jobs import utils
 
 
@@ -114,3 +116,41 @@ class JobInactivateForm(forms.ModelForm):
     class Meta:
         model = JobInactivated
         exclude = ('job', )
+
+
+class JobSearchForm(forms.ModelForm):
+    """ form to search Jobs """
+
+    CREATED_CHOICES = Choices(
+        ('all', "---------"),
+        ('today', _('Hoy')),
+        ('yesterday', _('Ayer')),
+        ('last_3_days', _('Últimos 3 días')),
+        ('last_week', _('Última Semana')),
+        ('month_ago', _('Un mes atrás'))
+    )
+    created = forms.ChoiceField(choices=CREATED_CHOICES)
+
+    REMOTE_WORK_CHOICES = Choices(
+        ('all', "---------"),
+        ('remote', _('Remoto')),
+        ('onsite', _('Presencial')),
+    )
+    remote_work = forms.ChoiceField(choices=REMOTE_WORK_CHOICES)
+
+    def __init__(self, *args, **kwargs):
+        super(JobSearchForm, self).__init__(*args, **kwargs)
+        self.fields['title'].required = False
+        self.fields['location'].required = False
+        self.fields['created'].label = "Publicado"
+        self.fields['created'].required = False
+        self.fields['remote_work'].required = False
+
+        self.helper = FormHelper()
+        self.helper.form_method = "GET"
+        self.helper.add_input(Submit('job_search_submit', _('Buscar'),
+                                     css_class='btn-success'))
+
+    class Meta:
+        model = Job
+        fields = ('title', 'company', 'seniority', 'location', 'created')

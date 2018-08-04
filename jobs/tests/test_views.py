@@ -1,5 +1,6 @@
 import bleach
 
+from django.utils import timezone
 from django.test import TestCase, Client
 from django.core.urlresolvers import reverse
 
@@ -46,6 +47,79 @@ class JobsTest(TestCase):
         self.assertIn(sponsored_job, response.context["sponsored_jobs"])
         self.assertIn(sponsored_job_2, response.context["sponsored_jobs"])
         self.assertEqual(len(response.context["sponsored_jobs"]), 2)
+
+    def _create_job(self, days_ago):
+        date = timezone.now() - timezone.timedelta(days=days_ago)
+        date = date.replace(hour=0, minute=0, second=0)
+        return JobFactory(owner=self.user, set_created=date)
+
+    def _test_jobs_filter_by_created(self, filter_value, jobs_in_range, jobs_out_of_range):
+        response = self.client.get(
+            reverse('jobs_list_all'), {'created': filter_value})
+        self.assertEqual(response.status_code, 200)
+        for job in jobs_in_range:
+            self.assertIn(job, response.context["job_list"])
+        self.assertEqual(len(response.context["job_list"]), len(jobs_in_range))
+
+    def test_jobs_filter_today(self):
+        self._test_jobs_filter_by_created(
+            filter_value='today',
+            jobs_in_range=[self._create_job(days_ago=0)],
+            jobs_out_of_range=[self._create_job(days_ago=1)])
+
+    def test_jobs_filter_yesterday(self):
+        self._test_jobs_filter_by_created(
+            filter_value='yesterday',
+            jobs_in_range=[self._create_job(days_ago=1)],
+            jobs_out_of_range=[self._create_job(days_ago=2)])
+
+    def test_jobs_filter_last_3_days(self):
+        self._test_jobs_filter_by_created(
+            filter_value='last_3_days',
+            jobs_in_range=[self._create_job(days_ago=1), self._create_job(days_ago=2)],
+            jobs_out_of_range=[self._create_job(days_ago=3)])
+
+    def test_jobs_filter_last_week(self):
+        self._test_jobs_filter_by_created(
+            filter_value='last_week',
+            jobs_in_range=[self._create_job(days_ago=1), self._create_job(days_ago=6)],
+            jobs_out_of_range=[self._create_job(days_ago=7)])
+
+    def test_jobs_filter_month_ago(self):
+        self._test_jobs_filter_by_created(
+            filter_value='month_ago',
+            jobs_in_range=[self._create_job(days_ago=28)],
+            jobs_out_of_range=[self._create_job(days_ago=38)])
+
+    def test_jobs_filter_title(self):
+        self._test_jobs_filter('title', 'A', 'B')
+
+    def test_jobs_filter_company(self):
+        company1 = CompanyFactory(owner=self.user, name='A')
+        company2 = CompanyFactory(owner=self.user, name='B')
+        self._test_jobs_filter('company', company1, company2, filter_value=company1.id)
+
+    def test_jobs_filter_seniority(self):
+        self._test_jobs_filter('seniority', 'Junior', 'Senior')
+
+    def test_jobs_filter_location(self):
+        self._test_jobs_filter('location', 'Córdoba', 'Bs As')
+
+    def test_jobs_filter_remote_work(self):
+        self._test_jobs_filter('remote_work', True, False, filter_value='remote')
+
+    def _test_jobs_filter(self, filter_name, case1, case2, filter_value=None):
+        job1 = JobFactory(
+            **{'owner': self.user, filter_name: case1})
+        JobFactory(
+            **{'owner': self.user, filter_name: case2})
+        if filter_value is None:
+            filter_value = case1
+        response = self.client.get(
+            reverse('jobs_list_all'), {filter_name: filter_value})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(job1, response.context["job_list"])
+        self.assertEqual(len(response.context["job_list"]), 1)
 
     def test_jobs_view_create(self):
         response = self.client.get(reverse('jobs_add'))
